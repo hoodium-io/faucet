@@ -24,7 +24,8 @@ export interface TokenInfo {
 
 /** Network metadata returned alongside the token list. */
 export interface NetworkInfo {
-  key: "devnet" | "testnet" | "mainnet";
+  /** Devnet and testnet only — a faucet never serves mainnet. */
+  key: "devnet" | "testnet";
   chainId: number;
   cosmosChainId: string;
   name: string;

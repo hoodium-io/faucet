@@ -1,10 +1,15 @@
 # Hoodium Faucet
 
-A faucet for **Hoodium Network** chains — currently targeting **Mainchain Devnet**
-(chain ID `6592`), with testnet (`6591`) and mainnet (`6590`) pre-wired.
+A faucet for **Hoodium Network** chains — **Devnet** and **Testnet only**.
 
 > **Test tokens only.** Nothing here has financial value. Devnet is reset
 > periodically.
+>
+> **Mainnet is deliberately not supported.** A faucet hands out tokens that are
+> worth nothing by design; on mainnet those tokens are real money, so a mainnet
+> faucet would be a funds leak rather than a feature. The backend rejects
+> `HOODIUM_NETWORK=mainnet` at startup, and both the deploy script and the chain
+> check refuse an RPC reporting chain ID `6590`.
 
 ## Architecture — a deposit vault, not a minting faucet
 
@@ -79,15 +84,18 @@ faucet/
 
 Verified against the chain repo (`docs/networks.md`, `utils/utils.go`).
 
-| Network | Cosmos chain-id | EVM chain ID | Gas token |
-|---|---|---|---|
-| Devnet | `rune_6592-1` | **6592** | RUNE (18 dp) |
-| Testnet | `rune_6591-1` | 6591 | RUNE (18 dp) |
-| Mainnet | `rune_6590-1` | 6590 | RUNE (18 dp) |
+| Network | Cosmos chain-id | EVM chain ID | Gas token | Faucet? |
+|---|---|---|---|---|
+| Devnet | `rune_6592-1` | **6592** | RUNE (18 dp) | ✅ active target |
+| Testnet | `rune_6591-1` | 6591 | RUNE (18 dp) | ✅ pre-wired |
+| ~~Mainnet~~ | ~~`rune_6590-1`~~ | ~~6590~~ | ~~RUNE~~ | ❌ **not supported** |
 
 Devnet exposes standard Ethereum JSON-RPC on `8545`. RUNE and HOODI are **native
 precompiles** on Hoodium (not deployed contracts) — which is exactly why the
 faucet holds inventory in a vault and transfers it, rather than trying to mint.
+
+Mainnet is omitted because the premise of a faucet — freely distributable tokens
+— only holds where the tokens have no value.
 
 ## Quick start (devnet)
 

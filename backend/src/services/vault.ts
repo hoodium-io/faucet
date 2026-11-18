@@ -9,6 +9,7 @@ import {
   type ContractTransactionReceipt,
 } from "ethers";
 import type { AppConfig } from "../config";
+import { MAINNET_CHAIN_ID } from "../config";
 import { TxQueue } from "../lib/tx-queue";
 
 /**
@@ -108,9 +109,24 @@ export class VaultService {
     return this.wallet.address;
   }
 
-  /** Verifies the RPC chain ID matches the configured network. */
+  /**
+   * Verifies the RPC chain ID matches the configured network.
+   *
+   * Also refuses mainnet outright. The enum and network table already exclude
+   * it, so this is defence in depth: if `HOODIUM_RPC_URL` is pointed at mainnet
+   * while the config says devnet, the mismatch is caught here — and if the chain
+   * *is* mainnet, the dispenser key is never used.
+   */
   async assertCorrectChain(): Promise<number> {
     const onChain = Number((await this.provider.getNetwork()).chainId);
+
+    if (onChain === MAINNET_CHAIN_ID) {
+      throw new FaucetError(
+        500,
+        "MAINNET_REFUSED",
+        `RPC reports Hoodium MAINNET (chain ID ${onChain}). A faucet must never dispense mainnet tokens.`,
+      );
+    }
 
     if (onChain !== this.config.network.chainId) {
       throw new FaucetError(

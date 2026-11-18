@@ -11,7 +11,6 @@
     "node": "hardhat node",
     "deploy:devnet": "hardhat run scripts/deploy.ts --network hoodiumDevnet",
     "deploy:testnet": "hardhat run scripts/deploy.ts --network hoodiumTestnet",
-    "deploy:mainnet": "hardhat run scripts/deploy.ts --network hoodiumMainnet",
     "seed:devnet": "hardhat run scripts/seed-devnet.ts --network hoodiumDevnet",
     "grant-dispenser:devnet": "hardhat run scripts/grant-dispenser.ts --network hoodiumDevnet",
     "status:devnet": "hardhat run scripts/inspect-vault.ts --network hoodiumDevnet",

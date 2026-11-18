@@ -14,15 +14,22 @@ import { configureVault, devnetTokenPlans, TokenPlan } from "./lib/config";
  *   5. Write `deployments/<network>.json` for the backend and frontend to read.
  *
  * Chain-ID verification is the important safety property: deploying a faucet to
- * the wrong chain is unrecoverable, and Hoodium's three networks share the same
- * client binary and differ only by chain ID.
+ * the wrong chain is unrecoverable, and Hoodium's networks share the same client
+ * binary and differ only by chain ID.
+ *
+ * MAINNET IS NOT A VALID TARGET. A faucet distributes tokens with no value; on
+ * mainnet those tokens are real money. `EXPECTED_CHAIN_IDS` therefore contains
+ * only devnet and testnet, and the explicit mainnet check below rejects a
+ * mainnet RPC even if someone adds the network to Hardhat by hand.
  */
 
 const EXPECTED_CHAIN_IDS: Record<string, number> = {
   hoodiumDevnet: 6592,
   hoodiumTestnet: 6591,
-  hoodiumMainnet: 6590,
 };
+
+/** Hoodium mainnet EIP-155 chain ID. Present only so it can be refused. */
+const MAINNET_CHAIN_ID = 6590;
 
 async function main() {
   const netName = network.name;
@@ -30,13 +37,25 @@ async function main() {
 
   if (expected === undefined) {
     throw new Error(
-      `Refusing to deploy: network "${netName}" is not a known Hoodium network.\n` +
-        `Known: ${Object.keys(EXPECTED_CHAIN_IDS).join(", ")}`,
+      `Refusing to deploy: network "${netName}" is not a supported faucet network.\n` +
+        `Supported: ${Object.keys(EXPECTED_CHAIN_IDS).join(", ")}\n` +
+        `A faucet is only for devnet and testnet.`,
     );
   }
 
   // --- Step 1: verify we are on the chain we think we are on ---
   const actual = Number((await ethers.provider.getNetwork()).chainId);
+
+  // Hard stop before anything else: never deploy a faucet that would dispense
+  // real-value RUNE.
+  if (actual === MAINNET_CHAIN_ID) {
+    throw new Error(
+      `Refusing to deploy: the RPC reports Hoodium MAINNET (chain ID ${actual}).\n` +
+        `A faucet must never dispense mainnet tokens - they have real value.\n` +
+        `Point HOODIUM_RPC_URL at devnet (6592) or testnet (6591).`,
+    );
+  }
+
   if (actual !== expected) {
     throw new Error(
       `Chain ID mismatch: network "${netName}" expects ${expected} but the RPC reports ${actual}.\n` +

@@ -15,8 +15,15 @@ const EnvSchema = z.object({
   CORS_ORIGINS: z.string().default("http://localhost:5173"),
 
   // --- Hoodium chain ---
-  /** Network key: selects chain ID + display metadata. */
-  HOODIUM_NETWORK: z.enum(["devnet", "testnet", "mainnet"]).default("devnet"),
+  /**
+   * Network key: selects chain ID + display metadata.
+   *
+   * `mainnet` is intentionally NOT a valid value. A faucet distributes tokens
+   * with no value; on mainnet those tokens are real money. Rejecting it at
+   * schema level means the process refuses to start rather than serving claims
+   * against a chain where every claim is a funds leak.
+   */
+  HOODIUM_NETWORK: z.enum(["devnet", "testnet"]).default("devnet"),
   /** EVM JSON-RPC endpoint. */
   HOODIUM_RPC_URL: z.string().url().default("http://127.0.0.1:8545"),
 
@@ -55,14 +62,16 @@ const EnvSchema = z.object({
 export type Env = z.infer<typeof EnvSchema>;
 
 /**
- * Chain metadata for the three Hoodium networks.
+ * Chain metadata for the Hoodium networks a faucet may serve.
  *
  * Verified against `hoodium/docs/networks.md` and `hoodium/utils/utils.go`:
  * the Cosmos chain-id is `rune_<evmChainId>` with a `-1` revision suffix, and
  * the EVM chain ID is the bare number. RUNE is the 18-decimal gas token.
+ *
+ * Mainnet (6590) is absent by design — see the note on `HOODIUM_NETWORK`.
  */
 export interface NetworkMeta {
-  key: "devnet" | "testnet" | "mainnet";
+  key: "devnet" | "testnet";
   chainId: number;
   cosmosChainId: string;
   name: string;
@@ -88,15 +97,17 @@ export const NETWORKS: Record<NetworkMeta["key"], NetworkMeta> = {
     nativeCurrency: { name: "RUNE", symbol: "RUNE", decimals: 18 },
     explorerUrl: null,
   },
-  mainnet: {
-    key: "mainnet",
-    chainId: 6590,
-    cosmosChainId: "rune_6590-1",
-    name: "Hoodium Mainnet",
-    nativeCurrency: { name: "RUNE", symbol: "RUNE", decimals: 18 },
-    explorerUrl: null,
-  },
 };
+
+/**
+ * Hoodium mainnet EIP-155 chain ID.
+ *
+ * Present only so the running process can refuse it: even with a valid devnet
+ * config, an RPC URL pointed at mainnet must be rejected before the dispenser
+ * key is ever used. This is the last line of defence against a `.env` typo
+ * turning the faucet into a mainnet money leak.
+ */
+export const MAINNET_CHAIN_ID = 6590;
 
 /** Fully-resolved, validated application config. */
 export interface AppConfig {

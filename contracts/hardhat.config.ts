@@ -23,11 +23,17 @@ function accounts(envVar: string): string[] {
 // Hoodium Network chain definitions
 // ---------------------------------------------------------------------------
 // Source of truth: hoodium/docs/networks.md and hoodium/utils/utils.go.
-//   mainnet  rune_6590  EIP-155 6590
 //   testnet  rune_6591  EIP-155 6591
 //   devnet   rune_6592  EIP-155 6592
-// Devnet is the active target; testnet/mainnet are pre-wired so switching is a
-// single `--network` flag plus RPC URL, with no config changes.
+//
+// A faucet only exists for networks where tokens have no value, so MAINNET IS
+// DELIBERATELY ABSENT. There is no `hoodiumMainnet` network and no
+// `deploy:mainnet` script: dispensing real-value RUNE from a public faucet would
+// be a funds leak, not a feature. Adding it back is not a config change - it is
+// a different product.
+//
+// Devnet is the active target; testnet is pre-wired so switching is a single
+// `--network` flag plus an RPC URL, with no code changes.
 //
 // NOTE: the Cosmos chain-id carries a `-1` revision suffix (e.g. rune_6592-1)
 // while the EVM chain ID is the bare number. Hardhat only needs the number.
@@ -42,11 +48,6 @@ const HOODIUM_NETWORKS = {
     chainId: 6591,
     rpcUrl: process.env.HOODIUM_TESTNET_RPC_URL || "",
     keyEnv: "HOODIUM_TESTNET_PRIVATE_KEY",
-  },
-  hoodiumMainnet: {
-    chainId: 6590,
-    rpcUrl: process.env.HOODIUM_MAINNET_RPC_URL || "",
-    keyEnv: "HOODIUM_MAINNET_PRIVATE_KEY",
   },
 } as const;
 
@@ -92,22 +93,15 @@ const config: HardhatUserConfig = {
       url: HOODIUM_NETWORKS.hoodiumTestnet.rpcUrl,
       accounts: accounts(HOODIUM_NETWORKS.hoodiumTestnet.keyEnv),
     },
-
-    hoodiumMainnet: {
-      chainId: HOODIUM_NETWORKS.hoodiumMainnet.chainId,
-      url: HOODIUM_NETWORKS.hoodiumMainnet.rpcUrl,
-      accounts: accounts(HOODIUM_NETWORKS.hoodiumMainnet.keyEnv),
-    },
   },
 
-  // Hoodium has no deployed block explorer yet (docs/evm-wallets.md: "Explore:
+  // Hoodium has no deployed block explorer yet (docs/evm-wallets.md: "Explorer:
   // none yet"), so there is nothing to verify against. The entry is kept as a
   // placeholder so adding one later is a one-line change.
   etherscan: {
     apiKey: {
       hoodiumDevnet: "empty",
       hoodiumTestnet: "empty",
-      hoodiumMainnet: "empty",
     },
     customChains: [],
   },
