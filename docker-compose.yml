@@ -1,0 +1,95 @@
+# Hoodium Faucet — full stack.
+#
+# Three services:
+#   redis-cache  rate-limit store (persisted so cooldowns survive restarts)
+#   backend-api  Express + ethers API that calls vault.dispense()
+#   frontend     nginx serving the SPA and proxying /api to backend-api
+#
+# The contracts are NOT containerised: Hardhat deploys them from the host or CI
+# against the network in .env. A container that could deploy contracts would need
+# the admin key inside the image, which is the opposite of the intended model.
+services:
+  redis-cache:
+    image: redis:7-alpine
+    restart: unless-stopped
+    # `appendonly yes` persists cooldowns across restarts. Losing them would let
+    # every address re-claim immediately, so persistence is not optional here.
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    networks:
+      - faucet-net
+
+  backend-api:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    depends_on:
+      redis-cache:
+        condition: service_healthy
+    ports:
+      # Bound to loopback: in production only nginx (or a reverse proxy) should
+      # reach the API, never the public internet directly.
+      - "127.0.0.1:3000:3000"
+    environment:
+      NODE_ENV: production
+      PORT: "3000"
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      # `trust proxy` = 1 because nginx forwards X-Forwarded-For. Without it,
+      # every request would appear to come from the frontend container's IP and
+      # the per-IP budget would be shared by all users.
+      TRUST_PROXY: "1"
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:8080}
+
+      HOODIUM_NETWORK: ${HOODIUM_NETWORK:-devnet}
+      HOODIUM_RPC_URL: ${HOODIUM_RPC_URL:-http://host.docker.internal:8545}
+
+      FAUCET_VAULT_ADDRESS: ${FAUCET_VAULT_ADDRESS}
+      FAUCET_DISPENSER_PRIVATE_KEY: ${FAUCET_DISPENSER_PRIVATE_KEY}
+
+      # Routes internally to the redis service by DNS name.
+      REDIS_URL: redis://redis-cache:6379
+
+      CLAIM_COOLDOWN_SECONDS: ${CLAIM_COOLDOWN_SECONDS:-86400}
+      IP_MAX_CLAIMS: ${IP_MAX_CLAIMS:-5}
+      IP_WINDOW_SECONDS: ${IP_WINDOW_SECONDS:-86400}
+
+      CAPTCHA_PROVIDER: ${CAPTCHA_PROVIDER:-none}
+      CAPTCHA_SECRET_KEY: ${CAPTCHA_SECRET_KEY:-}
+      CAPTCHA_SITE_KEY: ${CAPTCHA_SITE_KEY:-}
+
+      GAS_PRIORITY_FEE_GWEI: ${GAS_PRIORITY_FEE_GWEI:-1}
+    extra_hosts:
+      # Lets the container reach a `runed` node running on the host via
+      # `host.docker.internal:8545`.
+      - "host.docker.internal:host-gateway"
+    networks:
+      - faucet-net
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        # Relative `/api` keeps the browser single-origin; nginx proxies it.
+        VITE_API_BASE_URL: ""
+    restart: unless-stopped
+    depends_on:
+      - backend-api
+    ports:
+      - "${FRONTEND_PORT:-8080}:80"
+    networks:
+      - faucet-net
+
+volumes:
+  redis-data:
+
+networks:
+  faucet-net:
+    driver: bridge

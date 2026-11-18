@@ -1,0 +1,28 @@
+{
+  "name": "@hoodium-io/faucet-contracts",
+  "version": "0.1.0",
+  "private": true,
+  "license": "MIT",
+  "description": "FaucetVault + devnet test tokens for the Hoodium Network faucet.",
+  "scripts": {
+    "build": "hardhat compile",
+    "clean": "hardhat clean && rm -rf cache artifacts typechain-types",
+    "test": "hardhat test",
+    "node": "hardhat node",
+    "deploy:devnet": "hardhat run scripts/deploy.ts --network hoodiumDevnet",
+    "deploy:testnet": "hardhat run scripts/deploy.ts --network hoodiumTestnet",
+    "deploy:mainnet": "hardhat run scripts/deploy.ts --network hoodiumMainnet",
+    "seed:devnet": "hardhat run scripts/seed-devnet.ts --network hoodiumDevnet",
+    "grant-dispenser:devnet": "hardhat run scripts/grant-dispenser.ts --network hoodiumDevnet",
+    "status:devnet": "hardhat run scripts/inspect-vault.ts --network hoodiumDevnet",
+    "verify:devnet": "hardhat run scripts/verify-config.ts --network hoodiumDevnet"
+  },
+  "devDependencies": {
+    "@nomicfoundation/hardhat-toolbox": "^5.0.0",
+    "dotenv": "^16.4.5",
+    "hardhat": "^2.22.17"
+  },
+  "dependencies": {
+    "@openzeppelin/contracts": "^5.1.0"
+  }
+}

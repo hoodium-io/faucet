@@ -1,0 +1,54 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Baseline: the whole app is a dark surface, so set the document colours once
+   instead of repeating them per component. */
+@layer base {
+  html {
+    @apply antialiased;
+  }
+
+  body {
+    @apply bg-ink-950 text-slate-100 font-sans;
+  }
+
+  /* Keyboard focus must stay obvious: this UI is operated by keyboard and wallet
+     extension, and the amber accent is the only reliable affordance. */
+  :focus-visible {
+    @apply outline-none ring-2 ring-accent-500 ring-offset-2 ring-offset-ink-950;
+  }
+
+  /* Wallet addresses and hashes read better in a monospace face. */
+  .mono {
+    @apply font-mono tracking-tight;
+  }
+}
+
+@layer components {
+  /* The single card that holds the whole claim flow. */
+  .faucet-card {
+    @apply rounded-2xl border border-ink-700 bg-ink-900 shadow-card;
+  }
+
+  /* Shared input styling for the address box. */
+  .faucet-input {
+    @apply w-full rounded-xl border border-ink-700 bg-ink-800 px-4 py-3.5
+           text-sm text-slate-100 placeholder:text-slate-500
+           transition-colors hover:border-ink-600
+           focus:border-accent-500 focus:outline-none;
+  }
+
+  /* Primary call-to-action: blocky, amber, full-width. */
+  .faucet-button {
+    @apply flex w-full items-center justify-center gap-2 rounded-xl
+           bg-accent-500 px-5 py-3.5 text-sm font-semibold text-ink-950
+           transition-colors hover:bg-accent-400
+           disabled:cursor-not-allowed disabled:bg-ink-700 disabled:text-slate-500;
+  }
+
+  /* Small caps label used above fields and in the FAQ index. */
+  .faucet-label {
+    @apply text-xs font-semibold uppercase tracking-wider text-slate-400;
+  }
+}
