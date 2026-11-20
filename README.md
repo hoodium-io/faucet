@@ -112,12 +112,19 @@ Mainnet is omitted because the premise of a faucet — freely distributable toke
 
 ## Quick start (devnet)
 
+There is a one-command path once `.env` is filled in:
+
+```bash
+./scripts/devnet-up.sh      # compile → verify:abi → deploy → seed → status
+```
+
+The manual equivalent, with each step explained:
+
 ```bash
 # 0. Environment
 cp .env.example .env
 chmod 600 .env          # it will hold a private key
-#    Edit .env: set HOODIUM_DEVNET_PRIVATE_KEY (a funded devnet account) and
-#    FAUCET_DISPENSER_PRIVATE_KEY (a dedicated hot key — see below).
+#    See "Getting the two keys" below for what to put in it.
 
 # 1. Contracts
 cd contracts
@@ -131,7 +138,8 @@ cd ../contracts && FAUCET_DISPENSER_ADDRESS=0x... npm run grant-dispenser:devnet
 # 3. Inventory
 FAUCET_SEED_NATIVE_RUNE=100 FAUCET_SEED_DEPLOY_MOCKS=true npm run seed:devnet
 
-# 4. Run
+# 4. Run  (Redis is mandatory — see below)
+docker run -d --name faucet-redis -p 6379:6379 redis:7-alpine
 cd ../backend && npm install && npm run dev     # API on :3000
 cd ../frontend && npm install && npm run dev    # UI on :3001 (proxies /api)
 ```
@@ -142,6 +150,77 @@ Verify at any point:
 cd contracts && npm run status:devnet        # inventory, policy, pause state
 curl -s localhost:3000/api/faucet/health | jq
 ```
+
+### Getting the two keys
+
+`.env` needs **two different private keys**. They must not be the same key.
+
+#### A. `FAUCET_DISPENSER_PRIVATE_KEY` — generate a fresh one
+
+You will never see this key again in an exportable form, so save it somewhere safe
+first, then paste it into `.env`:
+
+```bash
+cd backend && node -e '
+  const { Wallet } = require("ethers");
+  const w = Wallet.createRandom();
+  console.log("address    :", w.address);
+  console.log("privateKey :", w.privateKey);
+'
+```
+
+Write the **address** down too — you need it to grant `DISPENSER_ROLE`, and it is
+what `/api/faucet/health` reports.
+
+#### B. `HOODIUM_DEVNET_PRIVATE_KEY` — a **funded** account
+
+This key pays gas to deploy the vault and to seed inventory. On this devnet the
+genesis premine account is:
+
+```
+EVM   : 0x7660eef3116bb288a9c8e800fa4f8947362aa668
+bech32: rune1weswauc3dweg32wgaqq05nufgumz4fng6udeqc
+balance: ~7,996,988,894 RUNE
+```
+
+Its key lives in your `runed` keyring (name: **`runed`**). Export it:
+
+```bash
+runed keys export runed \
+  --keyring-backend file \
+  --home ~/.runed \
+  --unarmored-hex --unsafe
+```
+
+You will be prompted for the keyring passphrase **and** asked to confirm the
+unsafe export. Paste the resulting 64-hex string into `.env`.
+
+> `runed keys export` needs a real terminal — it cannot be scripted with a
+> password on stdin, so run it yourself.
+
+#### C. Confirm the key matches the funded address *before* deploying
+
+```bash
+node scripts/derive-address.mjs          # prompts, input hidden
+```
+
+Compare the printed address with `0x7660eef3…`. **If it does not match, stop** —
+a wrong key means a faucet that cannot pay gas, and the error only appears later as
+"insufficient funds" during a claim.
+
+### Why Redis is required
+
+The claim pipeline stores cooldowns and per-IP allowances in Redis. Without it every
+claim fails closed (`Stream isn't writeable and enableOfflineQueue options is false`).
+The backend's startup preflight checks this and refuses to start with:
+
+```
+redis : UNREACHABLE — every claim will fail closed
+```
+
+`docker compose` is provided, but note the plugin is **not installed on every
+machine**; `docker run … redis:7-alpine` above is the portable alternative.
+
 
 ### Key separation — do not skip this
 

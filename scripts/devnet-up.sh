@@ -45,6 +45,19 @@ printf '  rpc        : %s\n' "$RPC"
 [ -n "${FAUCET_DISPENSER_PRIVATE_KEY:-}" ] || fail "FAUCET_DISPENSER_PRIVATE_KEY not set in .env"
 [ -n "${HOODIUM_DEVNET_PRIVATE_KEY:-}" ]   || fail "HOODIUM_DEVNET_PRIVATE_KEY not set in .env"
 
+# Format-check both keys here. ethers accepts a comma-separated list for the
+# deployer, so only the first entry is validated. A malformed key otherwise fails
+# much later with an obscure ethers error, after gas has been considered.
+key_ok() { [[ "$1" =~ ^(0x)?[0-9a-fA-F]{64}$ ]]; }
+
+DEPLOY_KEY_FIRST="${HOODIUM_DEVNET_PRIVATE_KEY%%,*}"
+DEPLOY_KEY_FIRST="$(echo "$DEPLOY_KEY_FIRST" | tr -d '[:space:]')"
+
+key_ok "$FAUCET_DISPENSER_PRIVATE_KEY" \
+  || fail "FAUCET_DISPENSER_PRIVATE_KEY is not a 32-byte hex key (64 hex chars, optional 0x)"
+key_ok "$DEPLOY_KEY_FIRST" \
+  || fail "HOODIUM_DEVNET_PRIVATE_KEY is not a 32-byte hex key (64 hex chars, optional 0x)"
+
 # Refuse to reuse one key for both roles.
 if [ "${FAUCET_DISPENSER_PRIVATE_KEY}" = "${HOODIUM_DEVNET_PRIVATE_KEY}" ]; then
   fail "FAUCET_DISPENSER_PRIVATE_KEY must NOT equal HOODIUM_DEVNET_PRIVATE_KEY (custody != signing)"

@@ -1,8 +1,8 @@
 import { ethers, network } from "hardhat";
-import type { Contract } from "ethers";
 import * as fs from "fs";
 import * as path from "path";
 import { NATIVE_TOKEN, toBaseUnits } from "./lib/config";
+import { deploymentFeeOverrides } from "./lib/fees";
 
 /**
  * Funds the faucet vault with inventory on a devnet/testnet.
@@ -74,10 +74,32 @@ function parseMockSpecs(): MockSpec[] | null {
   return parsed as MockSpec[];
 }
 
+/**
+ * The slice of `FaucetVault` that `seedMock` needs.
+ *
+ * Typed structurally rather than as `Contract`: `getContractAt` returns a
+ * typechain-generated `FaucetVault`, which is NOT assignable to ethers' bare
+ * `Contract` (it lacks the string index signature). Narrowing to the two methods
+ * actually used keeps this decoupled from both.
+ */
+interface VaultSeeder {
+  depositERC20(token: string, amount: bigint): Promise<{ wait(): Promise<unknown> }>;
+  setTokenConfig(
+    token: string,
+    cfg: {
+      enabled: boolean;
+      dripAmount: bigint;
+      maxDispense: bigint;
+      cooldown: number;
+      dailyCap: bigint;
+    },
+  ): Promise<{ wait(): Promise<unknown> }>;
+}
+
 /** Deploys a MockERC20, deposits inventory and registers its policy. */
 async function seedMock(
   spec: MockSpec,
-  vault: Contract,
+  vault: VaultSeeder,
   vaultAddress: string,
   treasury: string,
 ): Promise<DeploymentToken> {
@@ -85,6 +107,10 @@ async function seedMock(
 
   const supply = toBaseUnits(spec.supply, spec.decimals);
   const Mock = await ethers.getContractFactory("MockERC20");
+
+  // MockERC20 is a deployment too (empty `to`), so it needs the higher 5e12 floor.
+  const feeOverrides = await deploymentFeeOverrides();
+
   const token = await Mock.deploy(
     spec.name,
     spec.symbol,
@@ -92,6 +118,7 @@ async function seedMock(
     supply,
     supply, // cap == supply mimics a fixed-supply real asset
     treasury,
+    feeOverrides,
   );
   await token.waitForDeployment();
 

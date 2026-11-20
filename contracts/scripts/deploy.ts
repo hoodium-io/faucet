@@ -2,6 +2,10 @@ import { ethers, network } from "hardhat";
 import * as fs from "fs";
 import * as path from "path";
 import { configureVault, devnetTokenPlans, TokenPlan } from "./lib/config";
+import {
+  deploymentFeeOverrides,
+  MIN_DEPLOYMENT_GAS_PRICE,
+} from "./lib/fees";
 
 /**
  * Deploys the faucet stack to a Hoodium network.
@@ -87,8 +91,17 @@ async function main() {
   const admin = process.env.FAUCET_ADMIN_ADDRESS || deployer.address;
 
   console.log(`Deploying FaucetVault (admin: ${admin})...`);
+
+  // Hoodium charges 5e12 arune/gas for deployments but `eth_gasPrice` reports the
+  // 2.5e12 regular floor, so the fee must be set explicitly or the chain rejects
+  // the tx with "contract deployment requires a gas price of at least ...".
+  const feeOverrides = await deploymentFeeOverrides();
+  console.log(
+    `  deploy fee : maxFeePerGas ${feeOverrides.maxFeePerGas.toString()} arune/gas (deployment floor ${MIN_DEPLOYMENT_GAS_PRICE})`,
+  );
+
   const Vault = await ethers.getContractFactory("FaucetVault");
-  const vault = await Vault.deploy(admin);
+  const vault = await Vault.deploy(admin, feeOverrides);
   await vault.waitForDeployment();
 
   const vaultAddress = await vault.getAddress();
