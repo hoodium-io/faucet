@@ -40,9 +40,30 @@ export class RateLimiter {
       enableOfflineQueue: false,
       maxRetriesPerRequest: 2,
       lazyConnect: false,
+      // ioredis emits 'error' on every reconnect attempt. Without a listener Node
+      // prints "[ioredis] Unhandled error event" on each one, flooding the log
+      // while providing no actionable signal. Log once and let the health check
+      // report the state instead.
+      retryStrategy: (times) => Math.min(times * 200, 2_000),
     });
+
+    // Attach a listener so ioredis does not emit unhandled-error noise. The
+    // failure still surfaces: `ping()` returns false and every command rejects,
+    // which the startup preflight and /health both report explicitly.
+    this.redis.on("error", (error: Error) => {
+      // Rate-limited logging: only warn on the first failure per process to avoid
+      // a line every 200ms during an outage.
+      if (!this.errorLogged) {
+        this.errorLogged = true;
+        // eslint-disable-next-line no-console
+        console.warn(`[redis] connection error: ${error.message}`);
+      }
+    });
+
     this.networkKey = networkKey;
   }
+
+  private errorLogged = false;
 
   /** Exposed for health checks. */
   get client(): Redis {
@@ -176,9 +197,20 @@ export class RateLimiter {
     return this.redis.llen(`faucet:claims:${this.networkKey}`);
   }
 
+  /**
+   * Reports Redis reachability without throwing.
+   *
+   * A missing Redis is an expected operational state (dev machine, container not
+   * started), not an exception — so this returns `false` rather than rejecting,
+   * letting the preflight and `/health` report it as a failed *check*.
+   */
   async ping(): Promise<boolean> {
-    const res = await this.redis.ping();
-    return res === "PONG";
+    try {
+      const res = await this.redis.ping();
+      return res === "PONG";
+    } catch {
+      return false;
+    }
   }
 
   async close(): Promise<void> {

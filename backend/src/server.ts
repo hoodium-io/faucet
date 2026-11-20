@@ -10,7 +10,7 @@ import { buildApp } from "./app";
  * user claims that then fail, and hides a misconfiguration behind a 200.
  */
 async function main(): Promise<void> {
-  const { app, config, vault, shutdown } = buildApp();
+  const { app, config, vault, limiter, shutdown } = buildApp();
 
   // --- Preflight ---
   const chainId = await vault.assertCorrectChain().catch((error: unknown) => {
@@ -22,6 +22,11 @@ async function main(): Promise<void> {
   const paused = await vault.isPaused();
   const gas = await vault.dispenserGasBalance();
 
+  // Redis is required: without it every claim fails closed (all cooldown/lock
+  // commands reject). Check it here so the operator sees why, instead of a wave of
+  // 429s on the first real claim.
+  const redisUp = await limiter.ping();
+
   console.log("");
   console.log(`Hoodium faucet backend`);
   console.log(`  network   : ${config.network.name} (chain ID ${chainId})`);
@@ -32,6 +37,7 @@ async function main(): Promise<void> {
   console.log(`  paused    : ${paused}`);
   console.log(`  gas       : ${gas.toString()} wei`);
   console.log(`  captcha   : ${config.captcha.provider}`);
+  console.log(`  redis     : ${redisUp ? "connected" : "UNREACHABLE"} (${config.redisUrl})`);
   console.log("");
 
   if (!authorised) {
@@ -47,6 +53,19 @@ async function main(): Promise<void> {
     console.error(
       "[preflight] The dispenser has no RUNE for gas. Fund it before serving claims.",
     );
+  }
+
+  if (!redisUp) {
+    console.error(
+      "[preflight] Redis is UNREACHABLE — every claim will fail closed.\n" +
+        `           Expected at: ${config.redisUrl}\n` +
+        "           Start one with either:\n" +
+        "             docker run -d --name faucet-redis -p 6379:6379 redis:7-alpine\n" +
+        "             or install redis-server locally\n" +
+        "           (docker compose works too, but the compose plugin is not\n" +
+        "            installed on this machine.)",
+    );
+    process.exit(1);
   }
 
   const server = app.listen(config.port, () => {
