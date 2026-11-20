@@ -76,6 +76,19 @@ faucet/
 │       ├── lib/rate-limiter.ts Redis cooldowns
 │       └── lib/tx-queue.ts     nonce-safe serialisation
 ├── frontend/                   Vite + React 19 + Tailwind
+│   └── src/
+│       ├── components/         public claim flow
+│       ├── admin/              ← vault admin console (#/admin)
+│       │   ├── AdminPage.tsx   page shell + hash route target
+│       │   ├── useAdmin.ts     wallet + chain state, tx lifecycle
+│       │   ├── WalletPanel.tsx     connect, roles, wrong-network switch
+│       │   ├── PolicyPanel.tsx     drip/cooldown/cap editor
+│       │   ├── InventoryPanel.tsx  deposit / withdraw
+│       │   └── ControlsPanel.tsx   pause, cooldown, roles, rescue
+│       └── lib/
+│           ├── vaultAbi.ts     hand-written ABI (verified by verify:abi)
+│           ├── adminVault.ts   typed vault + ERC-20 wrappers
+│           └── wallet.ts       EIP-1193 connect / chain switch
 ├── docker-compose.yml
 └── .env.example
 ```
@@ -176,7 +189,54 @@ Every claim is signed by one key, so concurrent requests would race on the nonce
 simplest and correct, and it eliminates the `nonce too low` /
 `replacement transaction underpriced` class of bugs entirely.
 
+## Admin console — managing the vault without a block explorer
+
+Hoodium has no explorer yet, so the console replaces one for vault operations. Open
+**`/#/admin`** (there is a link in the public footer).
+
+It reads live chain state and can do everything an operator needs:
+
+| Panel | Actions | Role required |
+|---|---|---|
+| Overview | Vault address, network, unique recipients | none (read-only) |
+| Operator wallet | Connect, detect wrong network, one-click chain switch, show held roles | none |
+| Controls | Pause / resume dispensing, cross-token cooldown | `PAUSER_ROLE` / admin |
+| Token policy | Drip, max dispense, cooldown, daily cap, enable/disable, add token | `DEFAULT_ADMIN_ROLE` |
+| Inventory | Deposit RUNE, deposit ERC-20 (approve + deposit), withdraw | `TREASURER_ROLE` |
+| Access control | Grant / revoke any role | `DEFAULT_ADMIN_ROLE` |
+| Rescue | Recover a token that was never accepted | `DEFAULT_ADMIN_ROLE` |
+
+### Security model of the console
+
+- **It holds no keys.** Every write is signed by your browser wallet
+  (MetaMask/Rabby/Frame). The page's own code has no signing ability, so the
+  console's existence adds no attack surface — deleting it would not change the
+  vault's security.
+- **Roles are read for your address up front**, so actions you cannot perform are
+  disabled rather than failing in the wallet.
+- **The vault address comes from the API** (`/api/faucet/tokens`), so the console
+  cannot be pointed at a different vault than the one the backend serves.
+- **Wrong-network is a first-class state**, with a one-click switch that also
+  *adds* Hoodium to the wallet when unknown (the normal case).
+
+### The ABI is hand-written — and verified
+
+The console cannot fetch an ABI from anywhere, so `frontend/src/lib/vaultAbi.ts`
+carries it as source. That is only safe if it provably matches the contract, so:
+
+```bash
+cd contracts && npm run verify:abi
+```
+
+compares the two as canonical signatures (exactly what ethers uses for dispatch)
+and exits non-zero on any drift. **Run it after every contract change.** It
+requires `hardhat compile` first, since it reads the artifact.
+
+The frontend therefore needs `npm install` (it now depends on `ethers`) before the
+console will build.
+
 ## API
+
 
 | Method | Path | Purpose |
 |---|---|---|

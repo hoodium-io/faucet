@@ -14,7 +14,7 @@
     "seed:devnet": "hardhat run scripts/seed-devnet.ts --network hoodiumDevnet",
     "grant-dispenser:devnet": "hardhat run scripts/grant-dispenser.ts --network hoodiumDevnet",
     "status:devnet": "hardhat run scripts/inspect-vault.ts --network hoodiumDevnet",
-    "verify:devnet": "hardhat run scripts/verify-config.ts --network hoodiumDevnet"
+    "verify:abi": "hardhat run scripts/verify-abi.ts"
   },
   "devDependencies": {
     "@nomicfoundation/hardhat-toolbox": "^5.0.0",
@@ -23,5 +23,9 @@
   },
   "dependencies": {
     "@openzeppelin/contracts": "^5.1.0"
+  },
+  "allowScripts": {
+    "keccak@3.0.4": true,
+    "secp256k1@4.0.5": true
   }
 }

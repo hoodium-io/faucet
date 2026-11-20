@@ -93,8 +93,14 @@ export default function App() {
       </main>
 
       <footer className="border-t border-ink-800 py-6">
-        <div className="mx-auto max-w-5xl px-4 text-center text-xs text-slate-600 sm:px-6">
-          Hoodium Devnet tokens have no financial value and are for development only.
+        <div className="mx-auto flex max-w-5xl flex-col items-center gap-2 px-4 text-center text-xs text-slate-600 sm:flex-row sm:justify-between sm:px-6 sm:text-left">
+          <span>Hoodium Devnet tokens have no financial value and are for development only.</span>
+          <a
+            href="#/admin"
+            className="rounded border border-ink-700 px-2.5 py-1 text-[11px] text-slate-400 transition-colors hover:border-accent-500/50 hover:text-accent-300"
+          >
+            Admin console
+          </a>
         </div>
       </footer>
     </div>
