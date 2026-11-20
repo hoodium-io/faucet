@@ -19,6 +19,18 @@
  */
 
 /** Role identifiers, mirroring the `bytes32 public constant` values. */
+/**
+ * Role keys → the `bytes32 public constant` getter each one lives on.
+ *
+ * The KEY (`"TREASURER"`) is what the UI selects; the VALUE
+ * (`"TREASURER_ROLE"`) is the Solidity getter name and therefore the string used
+ * for dynamic contract access (`contract[ROLES[key]]()`).
+ *
+ * Getting this backwards is a silent bug: `contract["TREASURER"]()` is not a
+ * function, while `hasRole` still type-checks because the Contract is loosely
+ * typed. `RoleName` is the KEY union, and `RoleGetter` is the value union, so the
+ * distinction is enforced rather than remembered.
+ */
 export const ROLES = {
   ADMIN: "DEFAULT_ADMIN_ROLE",
   DISPENSER: "DISPENSER_ROLE",
@@ -26,7 +38,11 @@ export const ROLES = {
   PAUSER: "PAUSER_ROLE",
 } as const;
 
-export type RoleName = (typeof ROLES)[keyof typeof ROLES];
+/** Role selector used throughout the UI, e.g. `"TREASURER"`. */
+export type RoleName = keyof typeof ROLES;
+
+/** Solidity getter name, e.g. `"TREASURER_ROLE"`. */
+export type RoleGetter = (typeof ROLES)[RoleName];
 
 /**
  * Sentinel the contract uses for the native gas token (RUNE).

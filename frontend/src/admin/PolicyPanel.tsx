@@ -10,6 +10,24 @@ function fmt(value: bigint, decimals: number): string {
   return formatAmount(formatUnits(value, decimals));
 }
 
+/**
+ * Decimal hours → `bigint` seconds, clamped to the contract's `uint32` range.
+ *
+ * `TokenConfig.cooldown` is `uint32`, and ethers decodes it as `bigint`. Returning
+ * a plain `number` would both fail type-checking and risk a value the contract
+ * cannot represent — so the conversion is explicit and bounded here rather than
+ * left to fail in the wallet.
+ */
+function cooldownSeconds(hours: string): bigint {
+  const parsed = Number(hours);
+  const seconds = Number.isFinite(parsed) ? Math.round(parsed * 3600) : 0;
+
+  // uint32 max = 4294967295s (~136 years). Clamp rather than overflow.
+  const clamped = Math.min(Math.max(seconds, 0), 4_294_967_295);
+
+  return BigInt(clamped);
+}
+
 /** Small metric row. */
 function Counter({ label, value }: { label: string; value: string }) {
   return (
@@ -173,7 +191,7 @@ function PolicyEditor({ row, admin }: { row: TokenRow; admin: AdminState }) {
         enabled,
         dripAmount,
         maxDispense: maxDispenseAmount,
-        cooldown: Math.round(Number(cooldownHours) * 3600),
+        cooldown: cooldownSeconds(cooldownHours),
         dailyCap: cap,
       };
     } catch {
@@ -289,7 +307,7 @@ function AddTokenForm({ admin }: { admin: AdminState }) {
         enabled: true,
         dripAmount,
         maxDispense: maxDispenseAmount,
-        cooldown: Math.round(Number(cooldownHours) * 3600),
+        cooldown: cooldownSeconds(cooldownHours),
         dailyCap: cap,
       };
     } catch {

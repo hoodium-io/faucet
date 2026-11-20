@@ -65,17 +65,19 @@ export function WalletPanel({ admin }: { admin: AdminState }) {
             <span className="faucet-label mb-2 block">Roles held by this address</span>
             {roles ? (
               <div className="flex flex-wrap gap-2">
-                <RoleBadge name="DEFAULT_ADMIN_ROLE" held={roles.DEFAULT_ADMIN_ROLE} />
-                <RoleBadge name="TREASURER_ROLE" held={roles.TREASURER_ROLE} />
-                <RoleBadge name="PAUSER_ROLE" held={roles.PAUSER_ROLE} />
-                <RoleBadge name="DISPENSER_ROLE" held={roles.DISPENSER_ROLE} />
+                {/* `roles` is keyed by RoleName ("ADMIN"), while the badge label
+                    shows the Solidity getter name for clarity. */}
+                <RoleBadge name="DEFAULT_ADMIN_ROLE" held={roles.ADMIN} />
+                <RoleBadge name="TREASURER_ROLE" held={roles.TREASURER} />
+                <RoleBadge name="PAUSER_ROLE" held={roles.PAUSER} />
+                <RoleBadge name="DISPENSER_ROLE" held={roles.DISPENSER} />
               </div>
             ) : (
               <p className="text-xs text-slate-500">Reading roles…</p>
             )}
           </div>
 
-          {roles && !roles.DEFAULT_ADMIN_ROLE && !roles.TREASURER_ROLE && !roles.PAUSER_ROLE && (
+          {roles && !roles.ADMIN && !roles.TREASURER && !roles.PAUSER && (
             <p className="rounded-xl border border-ink-700 bg-ink-850 px-4 py-3 text-xs text-slate-400">
               This address holds no management role. Vault state is visible, but every write
               action will revert. Connect the admin, treasurer or pauser account.

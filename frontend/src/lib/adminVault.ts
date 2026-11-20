@@ -3,6 +3,7 @@ import {
   FAUCET_VAULT_ABI,
   ERC20_ABI,
   NATIVE_TOKEN,
+  ROLES,
   type AcceptedToken,
   type RoleName,
   type TokenConfigView,
@@ -50,13 +51,20 @@ export class AdminVault {
   }
 
   async hasRole(role: RoleName, account: string): Promise<boolean> {
-    const roleHash = (await this.contract[role]()) as string;
+    const roleHash = await this.roleHash(role);
     return (await this.contract.hasRole(roleHash, account)) as boolean;
   }
 
-  /** Resolves a role name to its bytes32 hash. */
+  /**
+   * Resolves a role selector to its bytes32 hash.
+   *
+   * `role` is the KEY (`"TREASURER"`); the contract getter is the VALUE
+   * (`TREASURER_ROLE`). Calling `contract[role]()` with the key would look up a
+   * non-existent method and throw at runtime — hence the explicit `ROLES` lookup.
+   */
   async roleHash(role: RoleName): Promise<string> {
-    return (await this.contract[role]()) as string;
+    const getter = ROLES[role];
+    return (await this.contract[getter]()) as string;
   }
 
   /** Policy + live state for one token. */
