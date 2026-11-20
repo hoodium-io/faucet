@@ -7,6 +7,7 @@ import {
   parseUnits,
   formatUnits,
   type ContractTransactionReceipt,
+  type ContractTransactionResponse,
 } from "ethers";
 import type { AppConfig } from "../config";
 import { MAINNET_CHAIN_ID } from "../config";
@@ -76,6 +77,60 @@ export interface ClaimResult {
   blockNumber: number | null;
 }
 
+/** A token's policy, as decoded from `tokenConfig` / `tokenStatus().cfg`. */
+export interface VaultTokenConfig {
+  enabled: boolean;
+  dripAmount: bigint;
+  maxDispense: bigint;
+  cooldown: bigint;
+  dailyCap: bigint;
+}
+
+/**
+ * Typed view of the `FaucetVault` methods the backend calls.
+ *
+ * WHY THIS EXISTS: `ethers.Contract` exposes dynamic members as effectively
+ * `any`-typed `ContractMethod | undefined`. Under `strict` +
+ * `noUncheckedIndexedAccess` every `contract.someMethod()` then fails with TS2722
+ * ("Cannot invoke an object which is possibly 'undefined'") — and, worse, nothing
+ * is actually type-checked. Declaring the surface explicitly fixes all of that and
+ * gives real return types.
+ *
+ * Keep in sync with `FAUCET_VAULT_ABI` below, which mirrors
+ * `contracts/contracts/FaucetVault.sol` (verified by `npm run verify:abi` there).
+ */
+export interface FaucetVaultContract {
+  // --- Views ---
+  DISPENSER_ROLE(): Promise<string>;
+  hasRole(role: string, account: string): Promise<boolean>;
+  paused(): Promise<boolean>;
+  NATIVE_TOKEN(): Promise<string>;
+  acceptedTokens(): Promise<string[]>;
+  inventory(token: string): Promise<bigint>;
+  tokenStatus(token: string): Promise<{
+    cfg: VaultTokenConfig;
+    available: bigint;
+    dispensedToday: bigint;
+    remainingToday: bigint;
+  }>;
+  claimableAt(token: string, recipient: string): Promise<[boolean, bigint]>;
+
+  // --- State-changing ---
+  dispense(
+    token: string,
+    recipient: string,
+    amount: bigint,
+    overrides?: Record<string, unknown>,
+  ): Promise<ContractTransactionResponse>;
+}
+
+/** Typed view of the ERC-20 metadata calls used for token display. */
+export interface Erc20MetadataContract {
+  symbol(): Promise<string>;
+  name(): Promise<string>;
+  decimals(): Promise<bigint>;
+}
+
 /**
  * All chain interaction lives here.
  *
@@ -91,7 +146,7 @@ export interface ClaimResult {
 export class VaultService {
   private readonly provider: JsonRpcProvider;
   private readonly wallet: Wallet;
-  private readonly vault: Contract;
+  private readonly vault: FaucetVaultContract;
   private readonly queue = new TxQueue();
 
   constructor(private readonly config: AppConfig) {
@@ -101,7 +156,10 @@ export class VaultService {
     });
 
     this.wallet = new Wallet(config.dispenserPrivateKey, this.provider);
-    this.vault = new Contract(config.vaultAddress, FAUCET_VAULT_ABI, this.wallet);
+    // The ABI drives the runtime dispatch; the cast only attaches the static
+    // surface declared in `FaucetVaultContract`.
+    this.vault = new Contract(config.vaultAddress, FAUCET_VAULT_ABI, this.wallet) as unknown as
+      FaucetVaultContract;
   }
 
   /** Address of the backend's signing account. */
@@ -183,7 +241,7 @@ export class VaultService {
         "function decimals() view returns (uint8)",
       ],
       this.provider,
-    );
+    ) as unknown as Erc20MetadataContract;
 
     const [symbol, name, decimals] = await Promise.all([
       erc20.symbol().catch(() => "UNKNOWN"),
@@ -256,6 +314,11 @@ export class VaultService {
   async resolveToken(selector: string): Promise<TokenInfo> {
     const tokens = await this.listTokens();
 
+    // `isAddress` is a `value is string` TYPE GUARD, not a plain boolean. Because
+    // `selector` is already `string`, TypeScript narrows the else branch to `never`
+    // — surviving even a stored-boolean alias. Reading the value back through a
+    // `String(...)` call restores the real type without weakening anything: the
+    // parameter is `string` by signature.
     if (isAddress(selector)) {
       const wanted = selector.toLowerCase();
       const found = tokens.find((t) => t.address.toLowerCase() === wanted);
@@ -269,9 +332,14 @@ export class VaultService {
       return found;
     }
 
-    const bySymbol = tokens.find((t) => t.symbol.toLowerCase() === selector.trim().toLowerCase());
+    const symbolSelector = String(selector).trim().toLowerCase();
+    const bySymbol = tokens.find((t) => t.symbol.toLowerCase() === symbolSelector);
     if (!bySymbol) {
-      throw new FaucetError(400, "TOKEN_NOT_ACCEPTED", `Unknown token symbol "${selector}".`);
+      throw new FaucetError(
+        400,
+        "TOKEN_NOT_ACCEPTED",
+        `Unknown token symbol "${symbolSelector}".`,
+      );
     }
     return bySymbol;
   }
