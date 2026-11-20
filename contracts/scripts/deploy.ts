@@ -92,13 +92,15 @@ async function main() {
 
   console.log(`Deploying FaucetVault (admin: ${admin})...`);
 
-  // Hoodium charges 5e12 arune/gas for deployments but `eth_gasPrice` reports the
-  // 2.5e12 regular floor, so the fee must be set explicitly or the chain rejects
-  // the tx with "contract deployment requires a gas price of at least ...".
+  // Hoodium charges 5e12 arune/gas for deployments while `eth_gasPrice` reports the
+  // 2.5e12 regular floor — and the floor is checked against the EFFECTIVE price
+  // `min(maxFee, baseFee + tip)`. See scripts/lib/fees.ts for why the tip carries
+  // the floor rather than maxFeePerGas.
   const feeOverrides = await deploymentFeeOverrides();
   console.log(
-    `  deploy fee : maxFeePerGas ${feeOverrides.maxFeePerGas.toString()} arune/gas (deployment floor ${MIN_DEPLOYMENT_GAS_PRICE})`,
+    `  deploy fee : tip ${feeOverrides.maxPriorityFeePerGas.toString()} + maxFee ${feeOverrides.maxFeePerGas.toString()} arune/gas`,
   );
+  console.log(`               (deployment floor ${MIN_DEPLOYMENT_GAS_PRICE} arune/gas)`);
 
   const Vault = await ethers.getContractFactory("FaucetVault");
   const vault = await Vault.deploy(admin, feeOverrides);

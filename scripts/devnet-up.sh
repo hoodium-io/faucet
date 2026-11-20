@@ -95,12 +95,50 @@ DEPLOYMENT="$CONTRACTS/deployments/hoodiumDevnet.json"
 [ -f "$DEPLOYMENT" ] || fail "deploy did not write $DEPLOYMENT"
 
 VAULT="$(python3 -c "import json;print(json.load(open('$DEPLOYMENT'))['contracts']['FaucetVault'])")"
+DISPENSER_ADDR="$(python3 -c "import json;d=json.load(open('$DEPLOYMENT'));print(d.get('dispenser') or '')")"
 printf '  vault      : %s\n' "$VAULT"
+printf '  dispenser  : %s\n' "${DISPENSER_ADDR:-<none>}"
+
+# ------------------------------------------------------- 4b. fund the dispenser
+# The dispenser signs every claim, so it needs RUNE for gas. It holds
+# DISPENSER_ROLE but starts at a zero balance — without this the first claim fails
+# with "insufficient funds", long after the deployment looked successful.
+if [ -n "$DISPENSER_ADDR" ]; then
+  step "Fund the dispenser with gas money"
+
+  DISP_BAL="$(curl -s -m 5 -X POST -H 'Content-Type: application/json' \
+    --data "{\"jsonrpc\":\"2.0\",\"method\":\"eth_getBalance\",\"params\":[\"$DISPENSER_ADDR\",\"latest\"],\"id\":1}" "$RPC" \
+    | sed -n 's/.*"result":"\([^"]*\)".*/\1/p')"
+  DISP_WEI=$((DISP_BAL))
+
+  if [ "$DISP_WEI" -eq 0 ]; then
+    TOPUP_RUNE="${FAUCET_DISPENSER_GAS_RUNE:-10}"
+    printf '  balance    : 0 — sending %s RUNE from the deployer\n' "$TOPUP_RUNE"
+    FAUCET_FUND_ADDRESS="$DISPENSER_ADDR" FAUCET_FUND_RUNE="$TOPUP_RUNE" \
+      npx hardhat run scripts/fund-dispenser.ts --network hoodiumDevnet
+  else
+    printf '  balance    : %s wei (already funded, skipping)\n' "$DISP_WEI"
+  fi
+fi
 
 # ---------------------------------------------------------------------- 5. seed
 step "Seed inventory"
+
+# `FAUCET_SEED_DEPLOY_MOCKS` comes from `.env` (sourced above with `set -a`), so
+# `${VAR:-true}` does NOT default it — `.env`'s `false` is already exported. Say so
+# plainly instead of silently seeding nothing.
+if [ "${FAUCET_SEED_DEPLOY_MOCKS:-false}" = "true" ]; then
+  printf '  mock ERC-20s : enabled (FAUCET_SEED_DEPLOY_MOCKS=true)\n'
+else
+  printf '  mock ERC-20s : DISABLED — FAUCET_SEED_DEPLOY_MOCKS=%s in .env\n' \
+    "${FAUCET_SEED_DEPLOY_MOCKS:-<unset>}"
+  printf '                 Only native RUNE will be seeded. To add devnet ERC-20\n'
+  printf '                 inventory, set FAUCET_SEED_DEPLOY_MOCKS=true and re-run\n'
+  printf '                 (the seed script is idempotent — existing tokens are skipped).\n'
+fi
+
 # Idempotent: mock tokens already present in the deployment file are skipped.
-FAUCET_SEED_DEPLOY_MOCKS="${FAUCET_SEED_DEPLOY_MOCKS:-true}" npm run seed:devnet
+npm run seed:devnet
 
 # -------------------------------------------------------------------- 6. status
 step "Live vault state"

@@ -372,15 +372,46 @@ export class VaultService {
 
     return this.queue.run(async () => {
       try {
+        // ------------------------------------------------------------------
+        // Fee construction — this is NOT a normal chain
+        // ------------------------------------------------------------------
+        // Hoodium enforces a minimum gas price floor of 2.5e12 arune/gas on regular
+        // transactions (5e12 for deployments). The floor is checked against the
+        // EFFECTIVE price:
+        //
+        //     effective = min(maxFeePerGas, baseFee + maxPriorityFeePerGas)
+        //
+        // The devnet's base fee is ~2e10, so a small tip (the default 1 gwei = 1e9)
+        // gives `min(maxFee, 2e10 + 1e9) ≈ 2.1e10` — two orders of magnitude below
+        // the floor, and the chain rejects the tx no matter how high maxFeePerGas
+        // is. The chain's own ante comment says as much:
+        //
+        //   "If the feemarket formula results in a BaseFee that lowers EffectivePrice
+        //    until it is < MinGasPrices, the users must increase the GasTipCap
+        //    (priority fee) until EffectivePrice > MinGasPrices."
+        //
+        // So the floor has to live in the TIP. `maxFeePerGas` is set to
+        // `tip + baseFee` so the cap never binds below the floor if the base fee
+        // rises between quoting and inclusion.
         const feeData = await this.provider.getFeeData();
-        const priority = parseUnits(this.config.gas.priorityFeeGwei.toString(), "gwei");
+        const block = await this.provider.getBlock("latest");
+        const baseFee = block?.baseFeePerGas ?? 0n;
+        const minRegular = this.config.gas.minRegularGasPrice;
 
         const overrides: Record<string, unknown> = {};
+
         if (feeData.maxFeePerGas !== null && feeData.maxFeePerGas !== undefined) {
-          overrides.maxPriorityFeePerGas = priority;
-          overrides.maxFeePerGas = feeData.maxFeePerGas + priority;
+          // Config tip is a *floor*: never go below it, but never below the chain's
+          // regular minimum either.
+          const configuredTip = parseUnits(this.config.gas.priorityFeeGwei.toString(), "gwei");
+          const tip = configuredTip > minRegular ? configuredTip : minRegular;
+
+          overrides.maxPriorityFeePerGas = tip;
+          overrides.maxFeePerGas = tip + baseFee;
         } else if (feeData.gasPrice !== null && feeData.gasPrice !== undefined) {
-          overrides.gasPrice = feeData.gasPrice + priority;
+          // Legacy: the floor is the price itself.
+          const price = feeData.gasPrice > minRegular ? feeData.gasPrice : minRegular;
+          overrides.gasPrice = price;
         }
 
         if (this.config.gas.gasLimit > 0) {

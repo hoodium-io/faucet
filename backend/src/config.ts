@@ -53,8 +53,20 @@ const EnvSchema = z.object({
   CAPTCHA_SITE_KEY: z.string().optional(),
 
   // --- Gas ---
-  /** Priority fee in gwei added on top of the base fee. */
+  /** Priority fee in gwei used as a FLOOR; the chain minimum usually dominates. */
   GAS_PRIORITY_FEE_GWEI: z.coerce.number().nonnegative().default(1),
+  /**
+   * Chain minimum gas price for a REGULAR transaction, in arune per gas.
+   *
+   * Hoodium's two-tier model (`app/ante/evm/deployment_fee.go`) — these are
+   * `x/feemarket` params and governance-adjustable, so they are configurable here
+   * rather than hardcoded. Defaults match the live devnet.
+   *
+   * The floor must be expressed in the EIP-1559 *priority tip*: the ante handler
+   * checks `min(maxFeePerGas, baseFee + maxPriorityFeePerGas)`, so a low tip
+   * cannot be compensated by a high max fee.
+   */
+  MIN_REGULAR_GAS_PRICE: z.coerce.number().int().nonnegative().default(2_500_000_000_000),
   /** Optional hard gas limit per dispense; 0 means "estimate". */
   GAS_LIMIT: z.coerce.number().int().nonnegative().default(0),
 });
@@ -122,7 +134,7 @@ export interface AppConfig {
   redisUrl: string;
   cooldowns: { claimSeconds: number; ipMaxClaims: number; ipWindowSeconds: number };
   captcha: { provider: Env["CAPTCHA_PROVIDER"]; secretKey: string | null; siteKey: string | null };
-  gas: { priorityFeeGwei: number; gasLimit: number };
+  gas: { priorityFeeGwei: number; minRegularGasPrice: bigint; gasLimit: number };
 }
 
 /**
@@ -177,6 +189,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     },
     gas: {
       priorityFeeGwei: e.GAS_PRIORITY_FEE_GWEI,
+      minRegularGasPrice: BigInt(e.MIN_REGULAR_GAS_PRICE),
       gasLimit: e.GAS_LIMIT,
     },
   };

@@ -10,15 +10,27 @@ import { ethers } from "hardhat";
  *   contract deploy : 5e12   arune/gas   (2× the regular floor)
  *
  * `eth_gasPrice` on the devnet returns exactly the REGULAR floor (2.5e12), so
- * ethers/Hardhat auto-fills 2.5e12 for every transaction. Deployments then fail
- * with:
+ * ethers/Hardhat auto-fills 2.5e12 for every transaction. Deployments then fail:
  *
- *   contract deployment requires a gas price of at least 5000000000000 ...,
- *   got 2500000000000 ...
+ *   contract deployment requires a gas price of at least 5000000000000,
+ *   got 2500000000000
  *
- * So any transaction with an empty `to` (a deployment) must override the fee
- * explicitly. These helpers read the live floors from the chain where possible and
- * fall back to the documented defaults.
+ * ── The subtlety that cost two attempts ──────────────────────────────────────
+ * The floor is checked against the **effective** price, which for a dynamic-fee
+ * (EIP-1559) transaction is:
+ *
+ *     effective = min(maxFeePerGas, baseFee + maxPriorityFeePerGas)
+ *
+ * Raising only `maxFeePerGas` while leaving the tip at 0 renders that
+ *
+ *     min(5e12, 2e10 + 0) = 2e10
+ *
+ * so the chain reports "got 20000000000" — the base fee, not the max fee. Both
+ * failures were observed on the live devnet and are explained by this formula;
+ * it is the only formula consistent with both.
+ *
+ * Therefore the floor must be expressed in the **tip**, with `maxFeePerGas` high
+ * enough to accommodate it on top of the base fee.
  */
 
 /** Documented defaults, in arune per gas. */
@@ -33,43 +45,49 @@ export async function currentBaseFee(): Promise<bigint> {
 }
 
 /**
+ * Builds overrides that guarantee `min(maxFee, baseFee + tip) >= floor`.
+ *
+ * Strategy: put the whole floor in the tip, and set `maxFeePerGas` to
+ * `floor + baseFee` so the cap can never bind below the floor even if the base
+ * fee rises between estimation and inclusion.
+ */
+async function feeOverridesForFloor(floor: bigint): Promise<{
+  maxFeePerGas: bigint;
+  maxPriorityFeePerGas: bigint;
+}> {
+  const baseFee = await currentBaseFee();
+
+  return {
+    // effective = min(maxFee, baseFee + tip); with tip == floor this is
+    // baseFee + floor, which is >= floor for any baseFee >= 0.
+    maxPriorityFeePerGas: floor,
+    // Headroom for a base-fee rise without making the cap absurd.
+    maxFeePerGas: floor + baseFee,
+  };
+}
+
+/**
  * Fee overrides for a CONTRACT DEPLOYMENT (empty `to`).
  *
- * MUST be passed to any `ContractFactory.deploy(...)`; otherwise Hardhat fills the
- * regular floor and the chain rejects the tx.
- *
- * Shape: EIP-1559 with `maxFeePerGas` at the deployment floor and a zero priority
- * tip, so `maxFee >= baseFee` holds trivially while the effective price still
- * clears 5e12.
+ * MUST be passed to any `ContractFactory.deploy(...)`.
  */
 export async function deploymentFeeOverrides(): Promise<{
   maxFeePerGas: bigint;
   maxPriorityFeePerGas: bigint;
 }> {
-  const baseFee = await currentBaseFee();
-
-  // The floor is a floor on the effective price. With a zero tip the effective
-  // price is min(baseFee + 0, maxFee) = maxFee when baseFee <= maxFee, which is
-  // the normal case (baseFee ~2e10 vs floor 5e12).
-  const maxFeePerGas = MIN_DEPLOYMENT_GAS_PRICE > baseFee ? MIN_DEPLOYMENT_GAS_PRICE : baseFee;
-
-  return { maxFeePerGas, maxPriorityFeePerGas: 0n };
+  return feeOverridesForFloor(MIN_DEPLOYMENT_GAS_PRICE);
 }
 
 /**
  * Fee overrides for a REGULAR transaction (transfer or contract call).
  *
- * `eth_gasPrice` already returns the regular floor, so these are mostly a
- * no-op — but being explicit keeps deploy and call paths symmetric and immune to
- * a chain whose `eth_gasPrice` under-reports.
+ * Hardhat's auto-fill already clears the regular floor on this chain, so these are
+ * a safety net — they keep call paths symmetric with deploys and immune to a chain
+ * whose `eth_gasPrice` under-reports.
  */
 export async function regularFeeOverrides(): Promise<{
   maxFeePerGas: bigint;
   maxPriorityFeePerGas: bigint;
 }> {
-  const baseFee = await currentBaseFee();
-  const maxFeePerGas =
-    MIN_REGULAR_GAS_PRICE > baseFee ? MIN_REGULAR_GAS_PRICE : baseFee;
-
-  return { maxFeePerGas, maxPriorityFeePerGas: 0n };
+  return feeOverridesForFloor(MIN_REGULAR_GAS_PRICE);
 }
