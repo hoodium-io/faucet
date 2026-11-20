@@ -1,9 +1,13 @@
 import { HardhatUserConfig } from "hardhat/config";
 import "@nomicfoundation/hardhat-toolbox";
 import * as dotenv from "dotenv";
+import * as path from "path";
 
-dotenv.config({ path: "../.env" });
-dotenv.config();
+// Load env from the repo root first, then from contracts/ so a local override
+// works. Resolved against this file's directory rather than the CWD, so
+// `hardhat` behaves the same whether run from `contracts/` or the repo root.
+dotenv.config({ path: path.resolve(__dirname, "..", ".env") });
+dotenv.config({ path: path.resolve(__dirname, ".env"), override: true });
 
 /**
  * Parses a comma-separated private-key list from an env var.
@@ -63,10 +67,40 @@ const config: HardhatUserConfig = {
         // heavy, so there is no reason to deviate.
         runs: 200,
       },
-      // Hoodium supports EVM forks up to London plus Shanghai/Cancun execution
-      // semantics, but `london` is what the chain's own Hardhat projects target.
-      // Deviating here risks opcodes the chain rejects (e.g. no blob txs).
-      evmVersion: "london",
+      // ---------------------------------------------------------------------
+      // evmVersion: "cancun" — VERIFIED against the chain, do not "fix" to london
+      // ---------------------------------------------------------------------
+      // Evidence, in order of authority:
+      //
+      // 1. `chains/mainchain/devnet/genesis.json` → app_state.evm.params.chain_config:
+      //      london_block: "0", shanghai_time: "0", cancun_time: "0",
+      //      prague_time: "0", osaka_time: "0"
+      //    Cancun is active from genesis, not pending.
+      //
+      // 2. `x/evm/types/chain_config.go` `DefaultChainConfig()` sets the same
+      //    Shanghai/Cancun/Prague/Osaka timestamps to zero, so this holds for
+      //    any chain initialised from the defaults, not just the committed devnet.
+      //
+      // 3. `docs/evm-compatibility.md` §EIP-5656 (MCOPY):
+      //      "supported in the underlying VM when Cancun is active."
+      //    So MCOPY — the opcode that fails under `london` — is executable here.
+      //
+      // 4. `docs/evm-compatibility.md` also states Prague is active on fresh
+      //    chains, and that Rune collapses Cancun → Prague → Osaka into a single
+      //    upgrade. Targeting `cancun` is therefore conservative-but-correct: it
+      //    emits nothing newer than what the chain has shipped.
+      //
+      // WHY `london` WAS WRONG: it was chosen to avoid blob transactions, but
+      // blobs are rejected at the *transaction* layer (EIP-4844 type-3 txs), not
+      // by the compiler's EVM target. Compiling for london does not prevent blob
+      // txs; it only forbids opcodes the chain actually supports. The practical
+      // result was that OpenZeppelin 5.6.x could not compile at all, because
+      // `utils/Bytes.sol` uses MCOPY.
+      //
+      // Verified locally: solc 0.8.29 rejects `utils/Bytes.sol` under `london`
+      // with the exact error above, and compiles `FaucetVault.sol` +
+      // `MockERC20.sol` with 0 errors / 0 warnings under `cancun`.
+      evmVersion: "cancun",
     },
   },
 

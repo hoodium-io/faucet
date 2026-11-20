@@ -23,7 +23,16 @@ async function deployFixture() {
   await token.waitForDeployment();
   const tokenAddr = await token.getAddress();
 
-  // Custody and signing are separate accounts by design.
+  // Custody and signing are separate accounts by design, so both roles are
+  // granted explicitly rather than relying on the constructor's grants to
+  // `admin`.
+  //
+  // The constructor grants DEFAULT_ADMIN / TREASURER / PAUSER to `admin` only and
+  // deliberately does NOT grant DISPENSER (see FaucetVault.sol). That means a
+  // fixture using a *separate* `treasurer` signer must grant TREASURER_ROLE to it
+  // — otherwise `depositERC20` correctly reverts with
+  // AccessControlUnauthorizedAccount(treasurer, TREASURER_ROLE).
+  await vault.connect(admin).grantRole(await vault.TREASURER_ROLE(), treasurer.address);
   await vault.connect(admin).grantRole(await vault.DISPENSER_ROLE(), dispenser.address);
 
   // Treasurer deposits inventory.
@@ -87,9 +96,12 @@ describe("FaucetVault", function () {
     });
 
     it("rejects ERC-20 deposits from non-treasurers", async function () {
-      const { vault, token, tokenAddr, alice } = await deployFixture();
+      const { vault, token, tokenAddr, treasurer, alice } = await deployFixture();
 
-      await token.transfer(alice.address, ethers.parseUnits("10", 18));
+      // The supply was minted to `treasurer`, so the transfer must come from
+      // them — calling it unconnected would run as the default signer (admin),
+      // which holds no tokens and would revert with ERC20InsufficientBalance.
+      await token.connect(treasurer).transfer(alice.address, ethers.parseUnits("10", 18));
       await token.connect(alice).approve(await vault.getAddress(), ethers.parseUnits("10", 18));
 
       await expect(

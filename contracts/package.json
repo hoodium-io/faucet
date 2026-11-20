@@ -7,6 +7,7 @@
   "scripts": {
     "build": "hardhat compile",
     "clean": "hardhat clean && rm -rf cache artifacts typechain-types",
+    "reset": "rm -rf node_modules package-lock.json",
     "test": "hardhat test",
     "node": "hardhat node",
     "deploy:devnet": "hardhat run scripts/deploy.ts --network hoodiumDevnet",
@@ -19,10 +20,15 @@
   "devDependencies": {
     "@nomicfoundation/hardhat-toolbox": "^5.0.0",
     "dotenv": "^16.4.5",
-    "hardhat": "^2.22.17"
+    "hardhat": "^2.22.17",
+    "ts-node": "^10.9.2",
+    "typescript": "~5.9.3"
   },
   "dependencies": {
     "@openzeppelin/contracts": "^5.1.0"
+  },
+  "overrides": {
+    "typescript": "~5.9.3"
   },
   "allowScripts": {
     "keccak@3.0.4": true,

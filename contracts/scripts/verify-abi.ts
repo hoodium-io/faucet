@@ -1,4 +1,5 @@
 import { ethers } from "hardhat";
+import type { Fragment, InterfaceAbi } from "ethers";
 import * as fs from "fs";
 import * as path from "path";
 
@@ -65,13 +66,16 @@ function readSourceAbi(): string[] {
 }
 
 /** Canonical signature for a fragment, e.g. `dispense(address,address,uint256)`. */
-function signatureOf(fragment: ethers.Fragment): string {
+function signatureOf(fragment: Fragment): string {
+  // `format("sighash")` is defined for these three and yields exactly the string
+  // ethers uses to derive a selector or a topic hash.
   if (fragment.type === "function" || fragment.type === "error" || fragment.type === "event") {
     return fragment.format("sighash");
   }
-  if (fragment.type === "constructor") return "constructor";
-  if (fragment.type === "receive") return "receive";
-  if (fragment.type === "fallback") return "fallback";
+
+  // The remaining fragment kinds (constructor, receive, fallback, struct) are
+  // not dispatch targets, so their bare type name is a sufficient identity for
+  // the comparison below.
   return fragment.type;
 }
 
@@ -82,7 +86,7 @@ function signatureOf(fragment: ethers.Fragment): string {
  * a custom-error selector are both derived from that string, so any change is a
  * breaking change.
  */
-function bucket(fragments: ethers.Fragment[]): Map<string, string[]> {
+function bucket(fragments: readonly Fragment[]): Map<string, string[]> {
   const out = new Map<string, string[]>();
 
   for (const f of fragments) {
@@ -104,8 +108,8 @@ async function main() {
     );
   }
 
-  const artifact = JSON.parse(fs.readFileSync(ARTIFACT, "utf8")) as { abi: unknown[] };
-  const compiled = bucket(ethers.Interface.from(artifact.abi as ethers.InterfaceAbi).fragments);
+  const artifact = JSON.parse(fs.readFileSync(ARTIFACT, "utf8")) as { abi: InterfaceAbi };
+  const compiled = bucket(ethers.Interface.from(artifact.abi).fragments);
 
   const sourceAbi = readSourceAbi();
   const declared = bucket(ethers.Interface.from(sourceAbi).fragments);
