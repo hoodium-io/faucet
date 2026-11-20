@@ -68,6 +68,10 @@ export function createFaucetRouter(
           rpcUrl: config.rpcUrl,
         },
         vaultAddress: config.vaultAddress,
+        // The dispenser address is public information (it is an on-chain role
+        // holder) and the admin console needs it to prefill "fund the dispenser".
+        // It is an *address*, never the key.
+        dispenserAddress: vault.dispenserAddress,
         captcha: {
           enabled: config.captcha.provider !== "none",
           provider: config.captcha.provider,

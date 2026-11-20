@@ -3,6 +3,7 @@ import { isAddress, parseUnits } from "ethers";
 import type { AdminState } from "./useAdmin";
 import { Panel, Field, Stat } from "./parts";
 import type { RoleName } from "@/lib/vaultAbi";
+import { fundAddress } from "@/lib/adminVault";
 
 const ROLE_OPTIONS: Array<{ key: RoleName; label: string }> = [
   { key: "ADMIN", label: "Default admin" },
@@ -290,6 +291,108 @@ export function RescuePanel({ admin }: { admin: AdminState }) {
         className="mt-3 rounded-xl border border-ink-600 px-4 py-2.5 text-xs font-semibold text-slate-300 hover:border-accent-500/50 hover:text-accent-300 disabled:cursor-not-allowed disabled:opacity-50"
       >
         Rescue
+      </button>
+    </Panel>
+  );
+}
+
+/**
+ * Sends native RUNE from the connected wallet to an arbitrary address.
+ *
+ * The reason this exists: the dispenser signs every claim, so it needs gas money.
+ * It is a freshly generated key, so it starts at zero, and `depositNative()` sends
+ * RUNE *into the vault* — which does nothing for the dispenser's gas balance. Before
+ * this panel there was no way to fund it from the console, and the first claim would
+ * fail with "insufficient funds" after a deployment that looked successful.
+ *
+ * Defaults the recipient to the dispenser address from the deployment so the common
+ * case is one click.
+ */
+export function FundWalletPanel({ admin }: { admin: AdminState }) {
+  const [to, setTo] = useState(admin.dispenserAddress ?? "");
+  const [amount, setAmount] = useState("10");
+  const [error, setError] = useState<string | null>(null);
+
+  const busy = admin.tx.kind === "signing" || admin.tx.kind === "pending";
+  const canWrite = Boolean(admin.address) && !admin.wrongNetwork && !busy;
+
+  const send = async () => {
+    setError(null);
+
+    if (!admin.signer) {
+      setError("Connect a wallet first.");
+      return;
+    }
+    if (!isAddress(to)) {
+      setError("Recipient is not a valid address.");
+      return;
+    }
+
+    let value: bigint;
+    try {
+      value = parseUnits(amount.trim() || "0", 18);
+    } catch {
+      setError("Amount is not a valid number.");
+      return;
+    }
+    if (value <= 0n) {
+      setError("Amount must be greater than zero.");
+      return;
+    }
+
+    // Not a vault call — a plain transfer. Tracked through the same `submit`
+    // lifecycle so the spinner/hash/confirmation behaviour is identical.
+    await admin.submit("Fund wallet", () => fundAddress(admin.signer!, to, value));
+  };
+
+  return (
+    <Panel
+      title="Fund a wallet with RUNE"
+      description="Plain native transfer. Use this to give the dispenser gas money — depositNative() sends RUNE into the vault instead, which is different."
+    >
+      <div className="grid gap-3 sm:grid-cols-3">
+        <div className="sm:col-span-2">
+          <Field
+            label="Recipient"
+            hint={
+              admin.dispenserAddress
+                ? "Prefilled with the dispenser from the deployment file."
+                : undefined
+            }
+          >
+            <input
+              className="faucet-input mono"
+              value={to}
+              onChange={(e) => setTo(e.target.value)}
+              placeholder="0x…"
+              spellCheck={false}
+            />
+          </Field>
+        </div>
+
+        <Field label="Amount (RUNE)">
+          <input
+            className="faucet-input mono"
+            value={amount}
+            onChange={(e) => setAmount(e.target.value)}
+            inputMode="decimal"
+          />
+        </Field>
+      </div>
+
+      {error && (
+        <p className="mt-3 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-xs text-red-300">
+          {error}
+        </p>
+      )}
+
+      <button
+        type="button"
+        onClick={() => void send()}
+        disabled={!canWrite || !isAddress(to) || amount.trim() === ""}
+        className="mt-3 faucet-button sm:w-auto sm:px-6"
+      >
+        Send RUNE
       </button>
     </Panel>
   );

@@ -13,6 +13,7 @@
     "deploy:devnet": "hardhat run scripts/deploy.ts --network hoodiumDevnet",
     "deploy:testnet": "hardhat run scripts/deploy.ts --network hoodiumTestnet",
     "seed:devnet": "hardhat run scripts/seed-devnet.ts --network hoodiumDevnet",
+    "add-token:devnet": "hardhat run scripts/add-token.ts --network hoodiumDevnet",
     "grant-dispenser:devnet": "hardhat run scripts/grant-dispenser.ts --network hoodiumDevnet",
     "status:devnet": "hardhat run scripts/inspect-vault.ts --network hoodiumDevnet",
     "fund-dispenser:devnet": "hardhat run scripts/fund-dispenser.ts --network hoodiumDevnet",

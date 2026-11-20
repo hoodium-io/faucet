@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { parseUnits, isAddress } from "ethers";
+import { parseUnits, formatUnits, isAddress } from "ethers";
 import type { AdminState } from "./useAdmin";
 import { Panel, Field } from "./parts";
 import { formatAmount } from "@/lib/format";
@@ -35,13 +35,66 @@ export function InventoryPanel({ admin }: { admin: AdminState }) {
   const [nativeAmount, setNativeAmount] = useState("");
   const [erc20Address, setErc20Address] = useState("");
   const [erc20Amount, setErc20Amount] = useState("");
-  const [erc20Decimals, setErc20Decimals] = useState("18");
+  // Auto-read from the token when the address is valid — see `lookupToken` below.
+  const [tokenMeta, setTokenMeta] = useState<{
+    symbol: string;
+    name: string;
+    decimals: number;
+  } | null>(null);
+  const [metaError, setMetaError] = useState<string | null>(null);
+  const [metaLoading, setMetaLoading] = useState(false);
+  const [tokenBalance, setTokenBalance] = useState<bigint | null>(null);
   const [withdrawToken, setWithdrawToken] = useState("");
   const [withdrawTo, setWithdrawTo] = useState("");
   const [withdrawAmount, setWithdrawAmount] = useState("");
 
   const busy = tx.kind === "signing" || tx.kind === "pending";
   const canWrite = Boolean(address) && !admin.wrongNetwork && !busy;
+
+  /**
+   * Reads symbol/name/decimals from the token contract.
+   *
+   * The operator previously had to type decimals by hand, which silently mis-scales
+   * the deposit if wrong (18 vs 6 is a 10^12 error). The token knows its own
+   * decimals, so this asks it.
+   */
+  const lookupToken = async (candidate: string) => {
+    if (!isAddress(candidate)) {
+      setTokenMeta(null);
+      setMetaError(null);
+      return;
+    }
+
+    const token = erc20(candidate);
+    if (!token) return;
+
+    setMetaLoading(true);
+    setMetaError(null);
+    setTokenBalance(null);
+
+    try {
+      const meta = await token.metadata();
+      setTokenMeta(meta);
+
+      // A readable symbol is a good signal the address really is an ERC-20 —
+      // a plain EOA or a random contract returns nothing.
+      if (meta.symbol === "UNKNOWN") {
+        setMetaError("That address does not look like an ERC-20 (no symbol()).");
+        return;
+      }
+
+      // Show what the operator actually holds — a deposit above this will revert.
+      if (address) {
+        const bal = await token.balanceOf(address).catch(() => null);
+        setTokenBalance(bal);
+      }
+    } catch {
+      setTokenMeta(null);
+      setMetaError("Could not read token metadata from that address.");
+    } finally {
+      setMetaLoading(false);
+    }
+  };
 
   /** Deposits native RUNE. */
   const handleDepositNative = async () => {
@@ -59,10 +112,9 @@ export function InventoryPanel({ admin }: { admin: AdminState }) {
    * deposits cost one signature instead of two.
    */
   const handleDepositErc20 = async () => {
-    if (!isAddress(erc20Address)) return;
+    if (!isAddress(erc20Address) || !tokenMeta) return;
 
-    const decimals = Number(erc20Decimals);
-    const amount = safeParseUnits(erc20Amount, decimals);
+    const amount = safeParseUnits(erc20Amount, tokenMeta.decimals);
     if (amount === null) return;
 
     const token = erc20(erc20Address);
@@ -143,37 +195,60 @@ export function InventoryPanel({ admin }: { admin: AdminState }) {
             <input
               className="faucet-input mono"
               value={erc20Address}
-              onChange={(e) => setErc20Address(e.target.value)}
+              onChange={(e) => {
+                setErc20Address(e.target.value);
+                void lookupToken(e.target.value);
+              }}
               placeholder="0x…"
               spellCheck={false}
             />
           </Field>
 
-          <div className="grid grid-cols-2 gap-3">
-            <Field label="Amount">
-              <input
-                className="faucet-input mono"
-                value={erc20Amount}
-                onChange={(e) => setErc20Amount(e.target.value)}
-                placeholder="250000"
-                inputMode="decimal"
-              />
-            </Field>
-            <Field label="Decimals">
-              <input
-                className="faucet-input mono"
-                value={erc20Decimals}
-                onChange={(e) => setErc20Decimals(e.target.value.replace(/\D/g, ""))}
-                placeholder="18"
-                inputMode="numeric"
-              />
-            </Field>
-          </div>
+          {/* Decimals/symbol come from the contract, so they cannot be mistyped. */}
+          {metaLoading && <p className="text-[11px] text-slate-500">Reading token…</p>}
+
+          {metaError && (
+            <p className="rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-xs text-red-300">
+              {metaError}
+            </p>
+          )}
+
+          {tokenMeta && !metaError && (
+            <p className="rounded-lg border border-ink-700 bg-ink-850 px-3 py-2 text-xs text-slate-400">
+              <span className="font-semibold text-slate-200">{tokenMeta.symbol}</span> ·{" "}
+              {tokenMeta.name} ·{" "}
+              <span className="mono">{tokenMeta.decimals}</span> decimals
+              {tokenBalance !== null && (
+                <>
+                  {" · your balance "}
+                  <span className="mono">
+                    {formatAmount(formatUnits(tokenBalance, tokenMeta.decimals))}
+                  </span>
+                </>
+              )}
+            </p>
+          )}
+
+          <Field label="Amount" hint="In whole units — decimals are applied automatically.">
+            <input
+              className="faucet-input mono"
+              value={erc20Amount}
+              onChange={(e) => setErc20Amount(e.target.value)}
+              placeholder="250000"
+              inputMode="decimal"
+            />
+          </Field>
 
           <button
             type="button"
             onClick={() => void handleDepositErc20()}
-            disabled={!canWrite || !isAddress(erc20Address) || erc20Amount.trim() === ""}
+            disabled={
+              !canWrite ||
+              !isAddress(erc20Address) ||
+              !tokenMeta ||
+              Boolean(metaError) ||
+              erc20Amount.trim() === ""
+            }
             className="faucet-button"
           >
             Approve &amp; deposit

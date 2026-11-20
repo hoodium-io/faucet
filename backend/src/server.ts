@@ -1,4 +1,18 @@
-import "dotenv/config";
+import { config as loadEnv } from "dotenv";
+import * as path from "path";
+
+// Load .env from the REPO ROOT, not the CWD.
+//
+// `import "dotenv/config"` resolves `.env` relative to `process.cwd()`, which is
+// `backend/` when running `cd backend && npm run dev` — so the repo-root `.env`
+// is never found and every required var appears undefined. Resolving against this
+// file's directory (`backend/src/../..` → repo root) makes it work from any CWD.
+//
+// Precedence: a `backend/.env` (if present) wins over the repo root, so a
+// component-local override is still possible.
+loadEnv({ path: path.resolve(__dirname, "..", "..", ".env") });
+loadEnv({ path: path.resolve(__dirname, "..", ".env"), override: true });
+
 import { buildApp } from "./app";
 
 /**

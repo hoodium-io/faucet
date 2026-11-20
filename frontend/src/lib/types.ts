@@ -38,6 +38,8 @@ export interface NetworkInfo {
 export interface TokensResponse {
   network: NetworkInfo;
   vaultAddress: string;
+  /** The backend's role-holding account (an address, never a key). */
+  dispenserAddress: string | null;
   captcha: {
     enabled: boolean;
     provider: "none" | "turnstile" | "recaptcha";

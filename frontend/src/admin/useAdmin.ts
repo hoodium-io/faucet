@@ -64,11 +64,15 @@ export interface AdminState {
   erc20: (token: string) => Erc20Token | null;
   network: NetworkInfo | null;
   vaultAddress: string;
+  /** The backend's dispenser account, exposed for the fund-wallet panel. */
+  dispenserAddress: string | null;
 }
 
 interface Options {
   network: NetworkInfo | null;
   vaultAddress: string;
+  /** The backend's dispenser account, for prefilling "fund the dispenser". */
+  dispenserAddress: string | null;
 }
 
 /**
@@ -129,7 +133,7 @@ export function decodeWalletError(error: unknown, label: string): string {
  * - Roles are read for the *connected* address, so the UI can disable actions the
  *   operator cannot perform instead of letting them fail in the wallet.
  */
-export function useAdmin({ network, vaultAddress }: Options): AdminState {
+export function useAdmin({ network, vaultAddress, dispenserAddress }: Options): AdminState {
   const [signer, setSigner] = useState<Signer | null>(null);
   const [address, setAddress] = useState<string | null>(null);
   const [walletChainId, setWalletChainId] = useState<number | null>(null);
@@ -341,5 +345,6 @@ export function useAdmin({ network, vaultAddress }: Options): AdminState {
     erc20,
     network,
     vaultAddress,
+    dispenserAddress,
   };
 }

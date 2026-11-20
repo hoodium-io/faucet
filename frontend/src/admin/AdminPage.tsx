@@ -4,7 +4,7 @@ import type { NetworkInfo } from "@/lib/types";
 import { useAdmin } from "./useAdmin";
 import { TxBanner } from "./parts";
 import { WalletPanel } from "./WalletPanel";
-import { OverviewPanel, ControlsPanel, RolesPanel, RescuePanel } from "./ControlsPanel";
+import { OverviewPanel, ControlsPanel, RolesPanel, RescuePanel, FundWalletPanel } from "./ControlsPanel";
 import { InventoryPanel } from "./InventoryPanel";
 import { PolicyPanel } from "./PolicyPanel";
 
@@ -22,6 +22,7 @@ import { PolicyPanel } from "./PolicyPanel";
 export function AdminPage() {
   const [network, setNetwork] = useState<NetworkInfo | null>(null);
   const [vaultAddress, setVaultAddress] = useState<string>("");
+  const [dispenserAddress, setDispenserAddress] = useState<string | null>(null);
   const [bootstrapError, setBootstrapError] = useState<string | null>(null);
 
   // The vault address and network metadata come from the API, so the console
@@ -33,6 +34,7 @@ export function AdminPage() {
       .then((data) => {
         setNetwork(data.network);
         setVaultAddress(data.vaultAddress);
+        setDispenserAddress(data.dispenserAddress ?? null);
       })
       .catch((error: unknown) => {
         if (error instanceof DOMException && error.name === "AbortError") return;
@@ -44,7 +46,7 @@ export function AdminPage() {
     return () => controller.abort();
   }, []);
 
-  const admin = useAdmin({ network, vaultAddress });
+  const admin = useAdmin({ network, vaultAddress, dispenserAddress });
 
   return (
     <div className="min-h-screen bg-ink-950">
@@ -120,6 +122,7 @@ export function AdminPage() {
             <OverviewPanel admin={admin} />
             <WalletPanel admin={admin} />
             <ControlsPanel admin={admin} />
+            <FundWalletPanel admin={admin} />
             <PolicyPanel admin={admin} />
             <InventoryPanel admin={admin} />
             <RolesPanel admin={admin} />

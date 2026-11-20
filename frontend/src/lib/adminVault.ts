@@ -1,4 +1,10 @@
-import { Contract, type ContractTransactionResponse, type Provider, type Signer } from "ethers";
+import {
+  Contract,
+  type ContractTransactionResponse,
+  type Provider,
+  type Signer,
+  type TransactionResponse,
+} from "ethers";
 import {
   FAUCET_VAULT_ABI,
   ERC20_ABI,
@@ -204,6 +210,31 @@ export class AdminVault {
   }
 }
 
+/**
+ * Sends native RUNE to an arbitrary address.
+ *
+ * WHY THIS IS NOT PART OF `AdminVault`: it is not a vault call. Funding the
+ * dispenser is a plain value transfer between EOAs — `vault.depositNative()` sends
+ * RUNE *into the vault*, which is a completely different thing and would not give
+ * the dispenser gas money.
+ *
+ * The dispenser signs every claim, so it must hold RUNE. A freshly generated key
+ * starts at zero, and nothing in the console could fund it before this existed —
+ * the first claim would fail with "insufficient funds" after a deployment that
+ * looked successful.
+ */
+export async function fundAddress(
+  signer: Signer,
+  to: string,
+  amountWei: bigint,
+): Promise<TransactionResponse> {
+  if (amountWei <= 0n) {
+    throw new Error("Amount must be greater than zero.");
+  }
+
+  return signer.sendTransaction({ to, value: amountWei });
+}
+
 /** ERC-20 helper bound to one token, for balance display and approval. */
 export class Erc20Token {
   private readonly contract: Contract;
@@ -222,6 +253,32 @@ export class Erc20Token {
 
   async approve(spender: string, amount: bigint): Promise<ContractTransactionResponse> {
     return this.contract.approve(spender, amount) as Promise<ContractTransactionResponse>;
+  }
+
+  /**
+   * Reads symbol / name / decimals from the token itself.
+   *
+   * The admin console used to make the operator type decimals by hand when
+   * depositing. That is both error-prone (18 vs 6 silently mis-scales the amount)
+   * and unnecessary — `decimals()` is part of the ERC-20 metadata interface. This
+   * reads them so the form can show the real values and the operator only supplies
+   * the address.
+   *
+   * Tolerates non-standard tokens: each field falls back rather than throwing, so
+   * a token missing `symbol()` still deposits.
+   */
+  async metadata(): Promise<{ symbol: string; name: string; decimals: number }> {
+    const [symbol, name, decimals] = await Promise.all([
+      this.contract.symbol().catch(() => "UNKNOWN"),
+      this.contract.name().catch(() => "Unknown Token"),
+      this.contract.decimals().catch(() => 18),
+    ]);
+
+    return {
+      symbol: String(symbol),
+      name: String(name),
+      decimals: Number(decimals),
+    };
   }
 }
 
