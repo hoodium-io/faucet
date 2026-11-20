@@ -36,6 +36,14 @@ export const NATIVE_TOKEN = "0x0000000000000000000000000000000000000000";
 
 export const FAUCET_VAULT_ABI = [
   // ------------------------------------------------------------------
+  // Constructor / receive
+  // ------------------------------------------------------------------
+  // Included so the console can distinguish deployment metadata from a call and
+  // because `receive()` being treasurer-gated is behaviour worth surfacing.
+  "constructor(address admin)",
+  "receive() payable",
+
+  // ------------------------------------------------------------------
   // Roles and constants
   // ------------------------------------------------------------------
   "function DEFAULT_ADMIN_ROLE() view returns (bytes32)",
@@ -45,9 +53,12 @@ export const FAUCET_VAULT_ABI = [
   "function NATIVE_TOKEN() view returns (address)",
   "function DAY() view returns (uint256)",
   "function hasRole(bytes32 role, address account) view returns (bool)",
+  "function getRoleAdmin(bytes32 role) view returns (bytes32)",
   "function grantRole(bytes32 role, address account)",
   "function revokeRole(bytes32 role, address account)",
   "function renounceRole(bytes32 role, address callerConfirmation)",
+  // ERC-165, inherited from AccessControl.
+  "function supportsInterface(bytes4 interfaceId) view returns (bool)",
 
   // ------------------------------------------------------------------
   // Inventory management (TREASURER_ROLE)
@@ -105,6 +116,15 @@ export const FAUCET_VAULT_ABI = [
   "event TokenConfigUpdated(address indexed token, tuple(bool enabled, uint256 dripAmount, uint256 maxDispense, uint32 cooldown, uint256 dailyCap) config)",
   "event AddressCooldownUpdated(uint32 cooldown)",
   "event Rescued(address indexed token, address indexed to, uint256 amount)",
+
+  // Inherited from AccessControl — emitted by the console's grant/revoke actions.
+  "event RoleAdminChanged(bytes32 indexed role, bytes32 indexed previousAdminRole, bytes32 indexed newAdminRole)",
+  "event RoleGranted(bytes32 indexed role, address indexed account, address indexed sender)",
+  "event RoleRevoked(bytes32 indexed role, address indexed account, address indexed sender)",
+
+  // Inherited from Pausable — emitted by the console's pause/resume actions.
+  "event Paused(address account)",
+  "event Unpaused(address account)",
 
   // ------------------------------------------------------------------
   // Errors

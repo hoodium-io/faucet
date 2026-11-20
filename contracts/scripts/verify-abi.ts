@@ -65,26 +65,39 @@ function readSourceAbi(): string[] {
   return entries;
 }
 
-/** Canonical signature for a fragment, e.g. `dispense(address,address,uint256)`. */
+/**
+ * Canonical signature for a fragment.
+ *
+ * - `function` / `error` / `event` → `format("sighash")`, i.e. exactly the string
+ *   ethers uses to derive a selector or topic hash. Any change is breaking.
+ * - `constructor` → `constructor(<input types>)`, so an added/removed constructor
+ *   argument is caught. A bare `"constructor"` would hide that.
+ * - `fallback` / `receive` → `format()`, because ethers v6 classifies BOTH as
+ *   `type: "fallback"` and only distinguishes them in the formatted string. Using
+ *   the bare type would make `receive()` and `fallback()` compare as equal.
+ */
 function signatureOf(fragment: Fragment): string {
-  // `format("sighash")` is defined for these three and yields exactly the string
-  // ethers uses to derive a selector or a topic hash.
   if (fragment.type === "function" || fragment.type === "error" || fragment.type === "event") {
     return fragment.format("sighash");
   }
 
-  // The remaining fragment kinds (constructor, receive, fallback, struct) are
-  // not dispatch targets, so their bare type name is a sufficient identity for
-  // the comparison below.
-  return fragment.type;
+  if (fragment.type === "constructor") {
+    const inputs = (fragment.inputs ?? []).map((i) => i.type).join(",");
+    return `constructor(${inputs})`;
+  }
+
+  // `fallback` and `receive` both land here; format() yields the distinguishing
+  // `receive() payable` / `fallback() payable` strings.
+  return fragment.format();
 }
 
 /**
- * Splits signatures into buckets so the report is readable.
+ * Buckets fragments by type so the report is readable.
  *
- * Events and errors are compared by name+types (sighash) too: an event topic and
- * a custom-error selector are both derived from that string, so any change is a
- * breaking change.
+ * NOTE: uses a `Map`, never a plain object. ethers reports `receive` under the
+ * `"fallback"` type key, and a plain object would additionally collide with
+ * `Object.prototype.constructor` when bucketing constructors — which silently
+ * corrupts counts.
  */
 function bucket(fragments: readonly Fragment[]): Map<string, string[]> {
   const out = new Map<string, string[]>();
